@@ -1282,7 +1282,7 @@ public class ClustersRetriever
 
         // Trim clusters with too many lines
         for (LineCluster cluster : allClusters) {
-            cluster.trim(combSizes, constants.minClusterTablatureLengthRatio.getValue());
+            cluster.trim(combSizes, constants.minTabLengthRatio.getValue());
         }
     }
 
@@ -1437,7 +1437,7 @@ public class ClustersRetriever
                 0.2,
                 "Minimum cluster true length (as ratio of median true length)");
 
-        private final Constant.Ratio minClusterTablatureLengthRatio = new Constant.Ratio(
+        private final Constant.Ratio minTabLengthRatio = new Constant.Ratio(
                 0.5,
                 "Minimum tablature cluster true length (as ratio of median true length)");
 
