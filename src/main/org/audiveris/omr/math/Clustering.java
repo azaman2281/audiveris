@@ -46,71 +46,85 @@ public class Clustering
      * @param laws instances of the laws
      * @return mixture coefficients
      */
-    public static double[] EM (double[] x,
-                               Law[] laws)
-    {
+    public static double[] EM(double[] x, Law[] laws) {
         int N = x.length;
         int G = laws.length;
 
-        double[] pi = new double[G];
+        double[] pi = initializePi(G);
         double[][] t = new double[G][N];
 
-        // initial guess for the mixture coefficients (uniform)
-        for (int k = 0; k < G; k++) {
-            pi[k] = 1.0 / G;
-        }
-
-        // iterative loop (until convergence or max iterations)
-        double convergence;
-
         for (int loop = 0; loop < MAX_ITER; loop++) {
-            convergence = 0;
+            double convergence = 0;
 
-            // ---- E Step ----
-            //(Bayes inversion formula)
-            for (int i = 0; i < N; i++) {
-                double denominator = 0;
+            // E Step
+            convergence = executeEStep(x, N, G, pi, laws, t, convergence);
 
-                for (int l = 0; l < G; l++) {
-                    denominator += (pi[l] * laws[l].proba(x[i]));
-                }
+            // M Step
+            convergence = executeMStep(x, N, G, pi, laws, t, convergence);
 
-                for (int k = 0; k < G; k++) {
-                    double numerator = pi[k] * laws[k].proba(x[i]);
-                    t[k][i] = numerator / denominator;
-                }
-            }
-
-            // ---- M Step ----
-            // mixture coefficients (maximum likelihood estimate of binomial distribution)
-            for (int k = 0; k < G; k++) {
-                double savedpi = pi[k];
-                double newPi = 0;
-
-                for (int i = 0; i < N; i++) {
-                    newPi += t[k][i];
-                }
-
-                newPi /= N;
-                pi[k] = newPi;
-
-                double deltaPi = newPi - savedpi;
-                convergence += (deltaPi * deltaPi);
-            }
-
-            // update the parameters of the laws
-            for (int k = 0; k < G; k++) {
-                laws[k].improveParameters(N, x, t[k]);
-            }
-
-            if (convergence < EPSILON) {
-                logger.debug("convergence:{} loop:{}", convergence, loop);
-
-                break;
-            }
+            // Convergence
+            checkConvergence(convergence, loop);
         }
 
         return pi;
+    }
+
+    private static double[] initializePi(int G) {
+        double[] pi = new double[G];
+        for (int k = 0; k < G; k++) {
+            pi[k] = 1.0 / G;
+        }
+        return pi;
+    }
+
+    private static double executeEStep(double[] x, int N, int G, double[] pi, Law[] laws, double[][] t, double convergence) {
+        for (int i = 0; i < N; i++) {
+            double denominator = calculateDenominator(G, pi, laws, x, i);
+
+            for (int k = 0; k < G; k++) {
+                double numerator = pi[k] * laws[k].proba(x[i]);
+                t[k][i] = numerator / denominator;
+            }
+        }
+        return convergence;
+    }
+
+    private static double calculateDenominator(int G, double[] pi, Law[] laws, double[] x, int i) {
+        double denominator = 0;
+        for (int l = 0; l < G; l++) {
+            denominator += (pi[l] * laws[l].proba(x[i]));
+        }
+        return denominator;
+    }
+
+    private static double executeMStep(double[] x, int N, int G, double[] pi, Law[] laws, double[][] t, double convergence) {
+        for (int k = 0; k < G; k++) {
+            double savedpi = pi[k];
+            double newPi = calculateNewPi(N, t, k);
+
+            pi[k] = newPi;
+            double deltaPi = newPi - savedpi;
+            convergence += (deltaPi * deltaPi);
+        }
+        for (int k = 0; k < G; k++) {
+            laws[k].improveParameters(N, x, t[k]);
+        }
+        return convergence;
+    }
+
+    private static double calculateNewPi(int N, double[][] t, int k) {
+        double newPi = 0;
+        for (int i = 0; i < N; i++) {
+            newPi += t[k][i];
+        }
+        newPi /= N;
+        return newPi;
+    }
+
+    private static void checkConvergence(double convergence, int loop) {
+        if (convergence < EPSILON) {
+            logger.debug("convergence:{} loop:{}", convergence, loop);
+        }
     }
 
     //~ Inner Classes ------------------------------------------------------------------------------
