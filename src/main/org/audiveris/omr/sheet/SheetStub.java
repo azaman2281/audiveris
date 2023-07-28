@@ -311,6 +311,18 @@ public class SheetStub
 
     //~ Methods ------------------------------------------------------------------------------------
 
+    public void assemblySelected (SheetAssembly sheetAssembly) {
+        logger.debug("{} assemblySelected", this.getId());
+
+        // Display the related boards
+        sheetAssembly.displayBoards();
+
+        if (this.hasSheet() && (this.getLatestStep().compareTo(OmrStep.HEADS) >= 0)) {
+            // Update repetitiveInput checkbox
+            sheetAssembly.updateRepetitiveInput(this.getSheet());
+        }
+    }
+
     //------------//
     // addPageRef //
     //------------//

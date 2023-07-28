@@ -246,17 +246,12 @@ public class SheetAssembly
      * This is called from {@link org.audiveris.omr.sheet.ui.StubsController} when the tab
      * of another sheet is selected.
      */
-    public void assemblySelected ()
-    {
-        logger.debug("{} assemblySelected", stub.getId());
+    public void assemblySelected () {
+        stub.assemblySelected(this);
+    }
 
-        // Display the related boards
-        displayBoards();
-
-        if (stub.hasSheet() && (stub.getLatestStep().compareTo(OmrStep.HEADS) >= 0)) {
-            // Update repetitiveInput checkbox
-            BookActions.getInstance().updateRepetitiveInput(stub.getSheet());
-        }
+    public void updateRepetitiveInput(Sheet sheet) {
+        BookActions.getInstance().updateRepetitiveInput(sheet);
     }
 
     //-------//
@@ -306,7 +301,7 @@ public class SheetAssembly
     /**
      * Make the boards pane visible (for this sheet & view).
      */
-    private void displayBoards ()
+    public void displayBoards()
     {
         // Make sure the view tab is ready
         final SheetView view = getCurrentView();
