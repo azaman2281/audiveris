@@ -635,142 +635,149 @@ public class BarsRetriever
      * Code in this method is rather fragile, because it relies on presence of proper peaks
      * (especially brace top/bottom which are not always correct) and at proper level.
      */
-    private void createGroups ()
-    {
+    private void createGroups() {
         for (SystemInfo system : sheet.getSystems()) {
             logger.debug("createGroups {}", system);
-
-            final List<PartGroup> allGroups = system.getPartGroups(); // All groups in this system
-            final Map<Integer, PartGroup> activeGroups = new TreeMap<>(); // Active groups
+            List<PartGroup> allGroups = system.getPartGroups(); // All groups in this system
+            Map<Integer, PartGroup> activeGroups = new TreeMap<>(); // Active groups
 
             for (Staff staff : system.getStaves()) {
-                logger.debug("  Staff#{}", staff.getId());
-
-                final StaffProjector projector = projectorOf(staff);
-                final List<StaffPeak> peaks = projector.getPeaks();
-                final int iStart = projector.getStartPeakIndex();
-
-                if (iStart == -1) {
-                    logger.debug("Staff#{} one-staff system", staff.getId());
-
-                    continue;
-                }
-
-                // Going from startBar (excluded) to the left, look for bracket/square peaks
-                // Braces are not handled in this loop
-                final boolean botConn = isPartConnected(staff, BOTTOM); // Part connection below?
-                int level = 0;
-
-                for (int i = iStart - 1; i >= 0; i--) {
-                    final StaffPeak peak = peaks.get(i);
-                    logger.debug("    {}", peak);
-
-                    if (peak.isBrace()) {
-                        break;
-                    }
-
-                    level++;
-
-                    if (peak.isBracket()) {
-                        final PartGroup pg;
-
-                        if (peak.isBracketEnd(TOP)) {
-                            // Start bracket group
-                            pg = new PartGroup(
-                                    level,
-                                    PartGroupingSymbol.bracket,
-                                    botConn,
-                                    staff.getId());
-                            allGroups.add(pg);
-                            activeGroups.put(level, pg);
-                            logger.debug("Staff#{} start bracket {}", staff.getId(), pg);
-                        } else {
-                            // Continue bracket group
-                            pg = activeGroups.get(level);
-
-                            if (pg != null) {
-                                pg.setLastStaffId(staff.getId());
-
-                                // Stop bracket group?
-                                if (peak.isBracketEnd(BOTTOM)) {
-                                    logger.debug("Staff#{} stop bracket {}", staff.getId(), pg);
-                                    activeGroups.remove(level);
-                                } else {
-                                    logger.debug("Staff#{} continue bracket {}", staff.getId(), pg);
-                                }
-                            } else {
-                                logger.warn("Staff#{} no group level:{}", staff.getId(), level);
-                            }
-                        }
-                    } else if (!isConnected(peak, TOP) && isConnected(peak, BOTTOM)) {
-                        // Start square group
-                        PartGroup pg = new PartGroup(
-                                level,
-                                PartGroupingSymbol.square,
-                                botConn,
-                                staff.getId());
-                        allGroups.add(pg);
-                        activeGroups.put(level, pg);
-                        logger.debug("Staff#{} start square {}", staff.getId(), pg);
-                    } else if (isConnected(peak, TOP)) {
-                        // Continue square group
-                        PartGroup pg = activeGroups.get(level);
-
-                        if (pg != null) {
-                            pg.setLastStaffId(staff.getId());
-
-                            // Stop square group?
-                            if (!isConnected(peak, BOTTOM)) {
-                                logger.debug("Staff#{} stop square {}", staff.getId(), pg);
-                                activeGroups.remove(level);
-                            } else {
-                                logger.debug("Staff#{} continue square {}", staff.getId(), pg);
-                            }
-                        } else {
-                            logger.warn("Staff#{} no group level:{}", staff.getId(), level);
-                        }
-                    } else {
-                        logger.warn("Staff#{} weird square portion", staff.getId());
-                    }
-                }
-
-                // Finally, here we handle braces if any
-                final StaffPeak bracePeak = projector.getBracePeak(); // Leading brace peak?
-
-                if (bracePeak == null) {
-                    logger.debug("Staff#{} no brace before starting barline", staff.getId());
-                } else {
-                    level++;
-
-                    if (bracePeak.isBraceEnd(TOP)) {
-                        // (We may have a brace group on hold at this level if bottom was missed)
-                        // Start brace group
-                        PartGroup pg = new PartGroup(
-                                level,
-                                PartGroupingSymbol.brace,
-                                botConn,
-                                staff.getId());
-                        allGroups.add(pg);
-                        activeGroups.put(level, pg);
-                        logger.debug("Staff#{} start brace {}", staff.getId(), pg);
-                    } else {
-                        // Continue brace group
-                        PartGroup pg = activeGroups.get(level);
-
-                        if (pg != null) {
-                            pg.setLastStaffId(staff.getId());
-
-                            // Stop brace group?
-                            if (bracePeak.isBraceEnd(BOTTOM)) {
-                                activeGroups.remove(level);
-                                logger.debug("Staff#{} stop brace {}", staff.getId(), pg);
-                            }
-                        } else {
-                            logger.info("No brace partner at level:{} for {}", level, bracePeak);
-                        }
-                    }
-                }
+                processStaff(staff, allGroups, activeGroups);
             }
+        }
+    }
+
+    private void processStaff(Staff staff, List<PartGroup> allGroups, Map<Integer, PartGroup> activeGroups) {
+        logger.debug("  Staff#{}", staff.getId());
+
+        StaffProjector projector = projectorOf(staff);
+        List<StaffPeak> peaks = projector.getPeaks();
+        int iStart = projector.getStartPeakIndex();
+
+        if (iStart == -1) {
+            logger.debug("Staff#{} one-staff system", staff.getId());
+            return;
+        }
+
+        boolean botConn = isPartConnected(staff, BOTTOM); // Part connection below?
+        int level = 0;
+
+        processPeaks(staff, iStart, peaks, botConn, level, allGroups, activeGroups);
+        processBracePeak(staff, botConn, level, allGroups, activeGroups);
+    }
+
+    private void processPeaks(Staff staff, int iStart, List<StaffPeak> peaks, boolean botConn, int level, List<PartGroup> allGroups, Map<Integer, PartGroup> activeGroups) {
+        for (int i = iStart - 1; i >= 0; i--) {
+            StaffPeak peak = peaks.get(i);
+            logger.debug("    {}", peak);
+
+            if (peak.isBrace()) {
+                break;
+            }
+
+            level++;
+
+            if (peak.isBracket()) {
+                processBracketPeak(staff, peak, botConn, level, allGroups, activeGroups);
+            } else if (!isConnected(peak, TOP) && isConnected(peak, BOTTOM)) {
+                startSquareGroup(staff, botConn, level, allGroups, activeGroups);
+            } else if (isConnected(peak, TOP)) {
+                continueSquareGroup(staff, peak, level, activeGroups);
+            } else {
+                logger.warn("Staff#{} weird square portion", staff.getId());
+            }
+        }
+    }
+
+    private void processBracketPeak(Staff staff, StaffPeak peak, boolean botConn, int level, List<PartGroup> allGroups, Map<Integer, PartGroup> activeGroups) {
+        PartGroup pg;
+        if (peak.isBracketEnd(TOP)) {
+            pg = startBracketGroup(staff, botConn, level, allGroups);
+            activeGroups.put(level, pg);
+        } else {
+            continueOrStopBracketGroup(staff, peak, level, activeGroups);
+        }
+    }
+
+    private PartGroup startBracketGroup(Staff staff, boolean botConn, int level, List<PartGroup> allGroups) {
+        PartGroup pg = new PartGroup(level, PartGroupingSymbol.bracket, botConn, staff.getId());
+        allGroups.add(pg);
+        logger.debug("Staff#{} start bracket {}", staff.getId(), pg);
+        return pg;
+    }
+
+    private void continueOrStopBracketGroup(Staff staff, StaffPeak peak, int level, Map<Integer, PartGroup> activeGroups) {
+        PartGroup pg = activeGroups.get(level);
+        if (pg != null) {
+            pg.setLastStaffId(staff.getId());
+            if (peak.isBracketEnd(BOTTOM)) {
+                logger.debug("Staff#{} stop bracket {}", staff.getId(), pg);
+                activeGroups.remove(level);
+            } else {
+                logger.debug("Staff#{} continue bracket {}", staff.getId(), pg);
+            }
+        } else {
+            logger.warn("Staff#{} no group level:{}", staff.getId(), level);
+        }
+    }
+
+    private void startSquareGroup(Staff staff, boolean botConn, int level, List<PartGroup> allGroups, Map<Integer, PartGroup> activeGroups) {
+        PartGroup pg = new PartGroup(level, PartGroupingSymbol.square, botConn, staff.getId());
+        allGroups.add(pg);
+        activeGroups.put(level, pg);
+        logger.debug("Staff#{} start square {}", staff.getId(), pg);
+    }
+
+    private void continueSquareGroup(Staff staff, StaffPeak peak, int level, Map<Integer, PartGroup> activeGroups) {
+        PartGroup pg = activeGroups.get(level);
+        if (pg != null) {
+            pg.setLastStaffId(staff.getId());
+            if (!isConnected(peak, BOTTOM)) {
+                logger.debug("Staff#{} stop square {}", staff.getId(), pg);
+                activeGroups.remove(level);
+            } else {
+                logger.debug("Staff#{} continue square {}", staff.getId(), pg);
+            }
+        } else {
+            logger.warn("Staff#{} no group level:{}", staff.getId(), level);
+        }
+    }
+
+    private void processBracePeak(Staff staff, boolean botConn, int level, List<PartGroup> allGroups, Map<Integer, PartGroup> activeGroups) {
+        StaffProjector projector = projectorOf(staff);
+        StaffPeak bracePeak = projector.getBracePeak(); // Leading brace peak?
+
+        if (bracePeak != null) {
+            level++;
+
+            if (bracePeak.isBraceEnd(TOP)) {
+                PartGroup pg = startBraceGroup(staff, botConn, level, allGroups);
+                activeGroups.put(level, pg);
+            } else {
+                continueOrStopBraceGroup(staff, bracePeak, level, activeGroups);
+            }
+        } else {
+            logger.debug("Staff#{} no brace before starting barline", staff.getId());
+        }
+    }
+
+    private PartGroup startBraceGroup(Staff staff, boolean botConn, int level, List<PartGroup> allGroups) {
+        PartGroup pg = new PartGroup(level, PartGroupingSymbol.brace, botConn, staff.getId());
+        allGroups.add(pg);
+        logger.debug("Staff#{} start brace {}", staff.getId(), pg);
+        return pg;
+    }
+
+    private void continueOrStopBraceGroup(Staff staff, StaffPeak bracePeak, int level, Map<Integer, PartGroup> activeGroups) {
+        PartGroup pg = activeGroups.get(level);
+        if (pg != null) {
+            pg.setLastStaffId(staff.getId());
+            if (bracePeak.isBraceEnd(BOTTOM)) {
+                activeGroups.remove(level);
+                logger.debug("Staff#{} stop brace {}", staff.getId(), pg);
+            }
+        } else {
+            logger.info("No brace partner at level:{} for {}", level, bracePeak);
         }
     }
 
